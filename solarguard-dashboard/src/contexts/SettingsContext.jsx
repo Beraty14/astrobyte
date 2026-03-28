@@ -28,7 +28,9 @@ export function SettingsProvider({ children }) {
   const [settings, setSettingsState] = useState(() => {
     try {
       const saved = localStorage.getItem('solarguard_settings')
-      return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings
+      const parsed = saved ? JSON.parse(saved) : {}
+      // Force backendEnabled to always be true
+      return { ...defaultSettings, ...parsed, backendEnabled: true }
     } catch {
       return defaultSettings
     }
