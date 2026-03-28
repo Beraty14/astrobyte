@@ -41,6 +41,7 @@ export function useApiData(backendEnabled = true) {
         fetch(`${API_BASE}/interplanetary-shocks`).then(r => r.ok ? r.json() : null).catch(() => null),
         fetch(`${API_BASE}/wsa-enlil`).then(r => r.ok ? r.json() : null).catch(() => null),
         fetch(`${API_BASE}/radiation-belt-enhancement`).then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch(`${API_BASE}/latest-flare`).then(r => r.ok ? r.json() : null).catch(() => null),
       ])
 
       // ★ POST-FLIGHT CHECK: If backend was disabled while we were fetching, discard results
@@ -50,7 +51,7 @@ export function useApiData(backendEnabled = true) {
         return
       }
       
-      const [risk, forecast, history, metrics, flares, storms, notifications, shocks, wsaEnlil, rbe] = responses
+      const [risk, forecast, history, metrics, flares, storms, notifications, shocks, wsaEnlil, rbe, latestFlare] = responses
       
       // If ANY core data exists, consider it a successful fetch.
       // Previously, minor API timeouts caused the entire dashboard to go blank.
@@ -58,17 +59,18 @@ export function useApiData(backendEnabled = true) {
 
       if (hasCoreData) {
         // Merge the current valid data with any previous data to avoid flickering on transient nulls
-        setData(prev => ({ 
-           risk: risk || prev?.risk, 
-           forecast: forecast || prev?.forecast, 
-           history: history || prev?.history, 
-           metrics: metrics || prev?.metrics, 
-           flares: flares || prev?.flares, 
+        setData(prev => ({
+           risk: risk || prev?.risk,
+           forecast: forecast || prev?.forecast,
+           history: history || prev?.history,
+           metrics: metrics || prev?.metrics,
+           flares: flares || prev?.flares,
            storms: storms || prev?.storms,
            notifications: notifications || prev?.notifications,
            shocks: shocks || prev?.shocks,
            wsaEnlil: wsaEnlil || prev?.wsaEnlil,
-           rbe: rbe || prev?.rbe
+           rbe: rbe || prev?.rbe,
+           latestFlare: latestFlare || prev?.latestFlare
         }))
         setIsLive(true)
         setLastUpdate(new Date())
@@ -188,15 +190,23 @@ export function useApiData(backendEnabled = true) {
   // ★ FIX: prob_mx_24h now uses the actual M+ event probability from risk API
   //         (was incorrectly using lstm.precision_24h which is a model accuracy metric ≈ 1.0)
   const calculatedAlertState = useMemo(() => ({
-    kp_current: data?.history?.highlight_events?.length > 0 
-      ? data.history.highlight_events[data.history.highlight_events.length - 1]?.kp_subsequent 
-      : null,
-    current_flare: data ? highestFlare : null,
+    kp_current: (() => {
+      // Önce realtime telemetri'den son Kp'yi al
+      const events = data?.history?.highlight_events
+      if (events?.length > 0) {
+        return events[events.length - 1]?.kp_subsequent ?? null
+      }
+      // Kp≥4 olay yoksa forecastSeries'in ilk noktasını kullan
+      const firstForecast = data?.forecast?.[0]
+      if (firstForecast?.kp_lstm != null) return firstForecast.kp_lstm
+      return null
+    })(),
+    current_flare: data?.latestFlare?.flare_class || (data ? highestFlare : null),
     solar_wind: data?.history?.realtime_telemetry?.solar_wind_speed ?? null,
     bz_gsm: data?.history?.realtime_telemetry?.bz_gsm ?? null,
     density: data?.history?.realtime_telemetry?.proton_density ?? null,
     prob_mx_24h: data?.risk?.prob_mx_event ?? null,
-  }), [highestFlare, data?.risk, data?.history])
+  }), [highestFlare, data?.risk, data?.history, data?.forecast, data?.latestFlare])
 
   const compositeAlertLevel = maxClass === 'X' ? 'RED' : maxClass === 'M' ? 'ORANGE' : 'GREEN'
 

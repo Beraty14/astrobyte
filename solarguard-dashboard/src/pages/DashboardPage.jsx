@@ -140,7 +140,7 @@ export default function DashboardPage({ satellites, groundAssets, alertState, fo
           <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 8 }}>
             {t('Kp TAHMİN GRAFİĞİ', 'Kp FORECAST CHART')}
           </div>
-          <div className="glass-card p-3" style={{ height: 200 }} aria-label="Kp İndeksi tahmin grafiği">
+          <div className="glass-card p-3" style={{ height: 200, width: '100%', minWidth: 0 }} aria-label="Kp İndeksi tahmin grafiği">
             <KpForecastChart data={forecastSeries} height={180} mini />
           </div>
         </div>
