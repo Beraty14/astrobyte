@@ -36,26 +36,26 @@ export default function RiskAnalysisPage({ groundAssets = [] }) {
             <div style={{ fontSize: 13, color: 'var(--cyan)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 800 }}>
               {t('TÜRKİYE KRİTİK ALTYAPI RİSK HARİTASI', 'TURKEY CRITICAL INFRASTRUCTURE RISK MAP')}
             </div>
-            
+
             {/* Zoom Controls */}
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => setMapScale(s => Math.max(0.5, s - 0.25))}
-                className="flex items-center justify-center rounded" 
+                className="flex items-center justify-center rounded"
                 style={{ width: 28, height: 28, background: 'var(--surface-light)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>remove</span>
               </button>
-              <button 
+              <button
                 onClick={() => setMapScale(1)}
-                className="flex items-center justify-center rounded font-data" 
+                className="flex items-center justify-center rounded font-data"
                 style={{ width: 44, height: 28, background: 'var(--surface-light)', border: '1px solid var(--border-subtle)', color: 'var(--cyan)', fontSize: 11 }}
               >
                 {(mapScale * 100).toFixed(0)}%
               </button>
-              <button 
+              <button
                 onClick={() => setMapScale(s => Math.min(3, s + 0.25))}
-                className="flex items-center justify-center rounded" 
+                className="flex items-center justify-center rounded"
                 style={{ width: 28, height: 28, background: 'var(--surface-light)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>
@@ -78,96 +78,94 @@ export default function RiskAnalysisPage({ groundAssets = [] }) {
               </div>
               <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(0,255,240,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,240,0.03) 1px, transparent 1px)', backgroundSize: '50px 50px', zIndex: 0 }} />
 
-            {/* Asset markers */}
-            {groundAssets.map(asset => {
-              const color = getRiskColor(asset.level)
-              
-              // Base mathematical projection fallback
-              let x = ((88 + (asset.lon - 26.5) * 46.8) / 1000) * 100
-              let y = ((81 + (41.6 - asset.lat) * 52.9) / 422) * 100
+              {/* Asset markers */}
+              {groundAssets.map(asset => {
+                const color = getRiskColor(asset.level)
+                
+                // Base mathematical projection fallback
+                let x = ((88 + (asset.lon - 26.5) * 46.8) / 1000) * 100
+                let y = ((81 + (41.6 - asset.lat) * 52.9) / 422) * 100
 
-              // Precise visual calibration for known critical assets on the 1000x422 SVG
-              if (asset.name.includes("İstanbul")) { x = 20.5; y = 21.3; }
-              if (asset.name.includes("İzmir")) { x = 12.0; y = 53.3; }
-              if (asset.name.includes("Ankara Hub")) { x = 35.5; y = 40.5; }
-              if (asset.name.includes("Gölbaşı")) { x = 38.5; y = 44.5; }
-              if (asset.name.includes("TÜBİTAK")) { x = 32.5; y = 36.5; }
+                // Precise visual calibration for known critical assets on the 1000x422 SVG
+                if (asset.name.includes("İstanbul")) { x = 20.5; y = 21.3; }
+                if (asset.name.includes("İzmir")) { x = 12.0; y = 53.3; }
+                if (asset.name.includes("Ankara Hub")) { x = 35.5; y = 40.5; }
+                if (asset.name.includes("Gölbaşı")) { x = 38.5; y = 44.5; }
+                if (asset.name.includes("TÜBİTAK")) { x = 32.5; y = 36.5; }
 
+                const dotSize = 8 + (asset.criticality || 0.5) * 8
+                const isSelected = selectedAsset?.id === asset.id
 
-              const dotSize = 8 + (asset.criticality || 0.5) * 8
-              const isSelected = selectedAsset?.id === asset.id
+                let iconStr = "satellite_alt";
+                if (asset.type === "power_grid") iconStr = "factory";
+                if (asset.type === "satellite_control") iconStr = "settings_input_antenna";
+                if (asset.type === "research_station") iconStr = "radar";
 
-              let iconStr = "satellite_alt";
-              if (asset.type === "power_grid") iconStr = "factory";
-              if (asset.type === "satellite_control") iconStr = "settings_input_antenna";
-              if (asset.type === "research_station") iconStr = "radar";
-
-              return (
-                <div
-                  key={asset.id}
-                  onClick={() => setSelectedAsset(asset)}
-                  style={{
-                    position: 'absolute',
-                    left: `${x}%`,
-                    top: `${y}%`,
-                    transform: `translate(-50%, -50%) scale(${1 / Math.max(1, Math.sqrt(mapScale))})`,
-                    zIndex: isSelected ? 10 : 2,
-                    display: 'flex',
-
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }}
-                  title={asset.name}
-                >
-                  <div style={{
-                    position: 'absolute',
-                    width: isSelected ? dotSize + 24 : dotSize + 16,
-                    height: isSelected ? dotSize + 24 : dotSize + 16,
-                    borderRadius: '50%',
-                    border: `1px solid ${color}`,
-                    opacity: isSelected ? 0.8 : 0.4,
-                    top: '50%', left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    animation: isSelected ? 'none' : 'pulse-cyan 2s ease-in-out infinite',
-                    background: isSelected ? `${color}33` : 'transparent'
-                  }} />
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: isSelected ? dotSize + 8 : dotSize + 4,
-                    height: isSelected ? dotSize + 8 : dotSize + 4,
-                    borderRadius: '50%',
-                    background: 'rgba(0,0,0,0.8)',
-                    border: `2px solid ${color}`,
-                    boxShadow: isSelected ? `0 0 15px ${color}` : `0 0 8px ${color}`,
-                    color: color,
-                    transition: 'all 0.2s'
-                  }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: isSelected ? dotSize + 2 : dotSize - 2 }}>{iconStr}</span>
+                return (
+                  <div
+                    key={asset.id}
+                    onClick={() => setSelectedAsset(asset)}
+                    style={{
+                      position: 'absolute',
+                      left: `${x}%`,
+                      top: `${y}%`,
+                      transform: `translate(-50%, -50%) scale(${1 / Math.max(1, Math.sqrt(mapScale))})`,
+                      zIndex: isSelected ? 10 : 2,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                    title={asset.name}
+                  >
+                    <div style={{
+                      position: 'absolute',
+                      width: isSelected ? dotSize + 24 : dotSize + 16,
+                      height: isSelected ? dotSize + 24 : dotSize + 16,
+                      borderRadius: '50%',
+                      border: `1px solid ${color}`,
+                      opacity: isSelected ? 0.8 : 0.4,
+                      top: '50%', left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      animation: isSelected ? 'none' : 'pulse-cyan 2s ease-in-out infinite',
+                      background: isSelected ? `${color}33` : 'transparent'
+                    }} />
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: isSelected ? dotSize + 8 : dotSize + 4,
+                      height: isSelected ? dotSize + 8 : dotSize + 4,
+                      borderRadius: '50%',
+                      background: 'rgba(0,0,0,0.8)',
+                      border: `2px solid ${color}`,
+                      boxShadow: isSelected ? `0 0 15px ${color}` : `0 0 8px ${color}`,
+                      color: color,
+                      transition: 'all 0.2s'
+                    }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: isSelected ? dotSize + 2 : dotSize - 2 }}>{iconStr}</span>
+                    </div>
+                    <div className="font-data" style={{
+                      position: 'absolute',
+                      bottom: -20,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      fontSize: 9,
+                      fontWeight: isSelected ? 800 : 700,
+                      color: isSelected ? '#fff' : color,
+                      background: 'rgba(0,0,0,0.6)',
+                      padding: '2px 4px',
+                      borderRadius: 4,
+                      whiteSpace: 'nowrap',
+                      border: isSelected ? `1px solid ${color}` : 'none'
+                    }}>
+                      {asset.name.split(' ').slice(-2).join(' ')} ({(asset.risk * 100).toFixed(0)}%)
+                    </div>
                   </div>
-                  <div className="font-data" style={{
-                    position: 'absolute',
-                    bottom: -20,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    fontSize: 9,
-                    fontWeight: isSelected ? 800 : 700,
-                    color: isSelected ? '#fff' : color,
-                    background: 'rgba(0,0,0,0.6)',
-                    padding: '2px 4px',
-                    borderRadius: 4,
-                    whiteSpace: 'nowrap',
-                    border: isSelected ? `1px solid ${color}` : 'none'
-                  }}>
-                    {asset.name.split(' ').slice(-2).join(' ')} ({(asset.risk * 100).toFixed(0)}%)
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
             </motion.div>
           </div>
         </div>

@@ -28,8 +28,15 @@ export default function PredictionsPage({ forecastSeries = [], alertState = {}, 
 
   const impact = getSectorImpact(maxKpForecast);
 
-  // Incoming CME from DONKI WSA-Enlil
-  const upcomingSim = wsaEnlil.find(sim => new Date(sim.estimatedShockArrivalTime) > new Date()) || wsaEnlil[0] || null;
+  // Incoming CME from DONKI WSA-Enlil - Filter for Earth-affecting simulations
+  const now = new Date();
+  const upcomingSim = wsaEnlil.find(sim =>
+    sim.isEarthGB &&
+    sim.estimatedShockArrivalTime &&
+    new Date(sim.estimatedShockArrivalTime) > now
+  ) || wsaEnlil.find(sim =>
+    sim.isEarthGB && sim.estimatedShockArrivalTime
+  ) || null;
   const shockTimeStr = upcomingSim ? new Date(upcomingSim.estimatedShockArrivalTime).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Simülasyon Yok';
   const cmeSource = upcomingSim && upcomingSim.cmeInputs?.length > 0 ? upcomingSim.cmeInputs[0].cmeStartTime : '-';
 
@@ -82,7 +89,9 @@ export default function PredictionsPage({ forecastSeries = [], alertState = {}, 
               <div className="text-right">
                 <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase' }}>Tahmini Şiddet</div>
                 <div className="font-data" style={{ fontSize: 24, fontWeight: 700, color: 'var(--orange)', marginTop: 4 }}>
-                  Kp {upcomingSim.predicted_kp?.join('-') || '6-8'}
+                  Kp {[upcomingSim.kp_90, upcomingSim.kp_135, upcomingSim.kp_180]
+                    .filter(v => v != null)
+                    .join('-') || '—'}
                 </div>
               </div>
             )}
@@ -117,9 +126,9 @@ export default function PredictionsPage({ forecastSeries = [], alertState = {}, 
       {/* MIDDLE ROW */}
       <div className="flex gap-4" style={{ height: 340 }}>
         {/* Kp Forecast Chart */}
-        <div className="flex-1 glass-card p-4">
+        <div className="flex-1 glass-card p-4" style={{ width: '100%', minWidth: 0 }}>
           <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 8 }}>
-            ZAMAN SERİSİ GRAFİĞİ — TAHMİNİ KP ENDEKSİ (96 SAAT)
+            ZAMAN SERİSİ GRAFİĞİ — TAHMİNİ KP ENDEKSİ ({forecastSeries.length > 0 ? `${forecastSeries[forecastSeries.length - 1].hour} SAAT` : '—'})
           </div>
           <KpForecastChart data={forecastSeries} height={280} showLegend />
         </div>

@@ -1,30 +1,49 @@
 """
-SolarGuard-TR — FastAPI Backend (Research-Grade API)
-================================
+SolarGuard-TR — FastAPI Backend (Clean Modular Architecture)
+============================================================
 Serves endpoints consumed by the Stitch Dashboard.
 NO MOCK DATA. Uses Real NOAA SWPC and NASA DONKI APIs.
+
+Version: 4.0.0 (Complete Rewrite)
 """
 import sys
+import requests
 from pathlib import Path
+from datetime import datetime, timezone
+from typing import Optional
 
+# Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import requests
-import json
-from datetime import datetime, timedelta, timezone
+import logging
 
+# Import modular components
+from .config import config
+from .cache_manager import cache
+from .noaa_client import noaa_client
+from .nasa_client import nasa_client
+from .data_processor import data_processor
 from models.turkish_asset_risk import generate_turkish_risk_report
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app
 app = FastAPI(
     title="SolarGuard-TR API",
     description="Güneş Fırtınası Erken Uyarı Sistemi — Backend (Real Data NO-MOCK)",
-    version="3.0.0",
+    version="4.0.0",
 )
 
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,428 +51,588 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-NASA_API_KEY = "DEMO_KEY"
-DONKI_BASE = "https://api.nasa.gov/DONKI"
-NOAA_BASE = "https://services.swpc.noaa.gov"
-
+# Simple in-memory cache for GOES X-Ray
 _cache = {}
 
-def fetch_noaa_json(endpoint: str):
-    cache_key = f"noaa_{endpoint}"
-    now = datetime.now(timezone.utc)
-    if cache_key in _cache:
-        cached_time, cached_data = _cache[cache_key]
-        if (now - cached_time).total_seconds() < 300: # 5 min cache
-            return cached_data
-            
-    url = f"{NOAA_BASE}/{endpoint}"
-    try:
-        r = requests.get(url, timeout=10.0)
-        if r.status_code == 200:
-            data = r.json()
-            _cache[cache_key] = (now, data)
-            return data
-    except Exception as e:
-        print(f"NOAA Fetch Error ({endpoint}): {e}")
-        
-    # Return previous if available
-    cached_val = _cache.get(cache_key, (None, None))[1]
-    if cached_val is not None:
-        return cached_val
-        
-    return []
 
-def _donki_fetch(endpoint: str, params: dict):
-    cache_key = f"{endpoint}_{json.dumps(params, sort_keys=True)}"
-    now = datetime.now(timezone.utc)
-    
-    if cache_key in _cache:
-        cached_time, cached_data = _cache[cache_key]
-        if (now - cached_time).total_seconds() < 600:
-            return cached_data
-            
-    url = f"{DONKI_BASE}/{endpoint}"
-    params["api_key"] = NASA_API_KEY
-    try:
-        r = requests.get(url, params=params, timeout=10.0)
-        if r.status_code == 200:
-            data = r.json()
-            _cache[cache_key] = (now, data)
-            return data
-    except Exception as e:
-        print(f"DONKI Fetch Error ({endpoint}): {e}")
-        
-    cached_val = _cache.get(cache_key, (None, None))[1]
-    if cached_val is not None:
-        return cached_val
-        
-    return []
-
-
-@app.get("/api/recent-flares")
-def get_recent_flares(days: int = Query(default=30)):
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    data = _donki_fetch("FLR", {
-        "startDate": start.strftime('%Y-%m-%d'),
-        "endDate": end.strftime('%Y-%m-%d')
-    })
-    return data if isinstance(data, list) else []
-
-@app.get("/api/geomagnetic-storms")
-def get_geomagnetic_storms(days: int = Query(default=30)):
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    data = _donki_fetch("GST", {
-        "startDate": start.strftime('%Y-%m-%d'),
-        "endDate": end.strftime('%Y-%m-%d')
-    })
-    return data if isinstance(data, list) else []
-
-@app.get("/api/cme-events")
-def get_cme_events(days: int = Query(default=30)):
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    data = _donki_fetch("CME", {
-        "startDate": start.strftime('%Y-%m-%d'),
-        "endDate": end.strftime('%Y-%m-%d')
-    })
-    return data if isinstance(data, list) else []
-
-@app.get("/api/donki-notifications")
-def get_donki_notifications(days: int = Query(default=30), type: str = Query(default="all")):
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    data = _donki_fetch("notifications", {
-        "startDate": start.strftime('%Y-%m-%d'),
-        "endDate": end.strftime('%Y-%m-%d'),
-        "type": type
-    })
-    return data if isinstance(data, list) else []
-
-@app.get("/api/interplanetary-shocks")
-def get_interplanetary_shocks(days: int = Query(default=30)):
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    data = _donki_fetch("IPS", {
-        "startDate": start.strftime('%Y-%m-%d'),
-        "endDate": end.strftime('%Y-%m-%d'),
-        "location": "Earth"
-    })
-    return data if isinstance(data, list) else []
-
-@app.get("/api/wsa-enlil")
-def get_wsa_enlil(days: int = Query(default=15)):
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    data = _donki_fetch("WSAEnlilSimulations", {
-        "startDate": start.strftime('%Y-%m-%d'),
-        "endDate": end.strftime('%Y-%m-%d')
-    })
-    return data if isinstance(data, list) else []
-
-@app.get("/api/radiation-belt-enhancement")
-def get_rbe(days: int = Query(default=30)):
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(days=days)
-    data = _donki_fetch("RBE", {
-        "startDate": start.strftime('%Y-%m-%d'),
-        "endDate": end.strftime('%Y-%m-%d')
-    })
-    return data if isinstance(data, list) else []
-
-@app.get("/api/turkish-asset-risk")
-def get_turkish_asset_risk(kp: float = Query(default=None), flare_class: float = Query(default=None)):
-    if kp is None:
-        kp_data = fetch_noaa_json("products/noaa-planetary-k-index.json")
-        if kp_data and len(kp_data) > 1:
-            try:
-                kp = float(kp_data[-1][1])
-            except:
-                kp = 3.0
-        else:
-            kp = 3.0
-            
-    if flare_class is None:
-        flare_class = min(max((kp - 2.0) * 1.5, 1.0), 9.0)
-        
-    return generate_turkish_risk_report(
-        kp_forecast_24h=kp, 
-        flr_class_forecast=flare_class, 
-        prob_mx_event=min(kp/10.0, 0.99)
-    )
-
-@app.get("/api/space-weather-history")
-def get_space_weather_history():
-    kp_data = fetch_noaa_json("products/noaa-planetary-k-index.json")
-    plasma_data = fetch_noaa_json("json/dscovr/dscovr_plasma_1s.json")
-    mag_data = fetch_noaa_json("json/dscovr/dscovr_mag_1s.json")
-
-    # Get latest values for solar wind and Bz
-    current_solar_wind = None
-    current_density = None
-    current_bz = None
-
-    if plasma_data and len(plasma_data) > 0:
-        for p in reversed(plasma_data):
-            if p.get("speed") is not None:
-                current_solar_wind = float(p["speed"])
-                current_density = float(p.get("density", 5.0))
-                break
-
-    if mag_data and len(mag_data) > 0:
-        for m in reversed(mag_data):
-            if m.get("bz_gsm") is not None:
-                current_bz = float(m["bz_gsm"])
-                break
-
-    if not kp_data or len(kp_data) < 2:
-        return {"highlight_events": [], "period": "Live data unavailable"}
-    
-    events = []
-    max_kp = 0
-    # Process last 16 records (48 hours)
-    for row in kp_data[-16:]:
-        kp_val = float(row[1])
-        if kp_val > max_kp:
-            max_kp = kp_val
-        if kp_val >= 4.0:
-            events.append({
-                "date": row[0],
-                "class": "G" + str(int(kp_val - 4)) if kp_val >= 5.0 else "Aktif",
-                "kp_subsequent": kp_val,
-                "description": f"Gözlemlenen Kp Olayı: {kp_val}"
-            })
-    
-    return {
-        "highlight_events": events,
-        "period": "Son 48 Saat (NOAA SWPC)",
-        "total_m_plus_events": len(events),
-        "total_x_events": sum(1 for e in events if "G" in str(e.get("class", ""))),
-        "max_single_flare": f"Kp {max_kp}",
-        "realtime_telemetry": {
-            "solar_wind_speed": current_solar_wind,
-            "proton_density": current_density,
-            "bz_gsm": current_bz
-        }
-    }
-
-@app.get("/api/forecast-series")
-def get_forecast_series():
-    forecast = fetch_noaa_json("products/noaa-planetary-k-index-forecast.json")
-    
-    # Fetch live telemetry for hybrid risk formula
-    plasma_data = fetch_noaa_json("json/dscovr/dscovr_plasma_1s.json")
-    mag_data = fetch_noaa_json("json/dscovr/dscovr_mag_1s.json")
-    _sw = 400.0
-    _bz = 0.0
-    if plasma_data and len(plasma_data) > 0:
-        for p in reversed(plasma_data):
-            if p.get("speed") is not None:
-                _sw = float(p["speed"]); break
-    if mag_data and len(mag_data) > 0:
-        for m in reversed(mag_data):
-            if m.get("bz_gsm") is not None:
-                _bz = float(m["bz_gsm"]); break
-    
-    series = []
-    if forecast and len(forecast) > 1:
-        kp_values = []
-        for idx, row in enumerate(forecast[1:]):
-            time_tag = row[0]
-            kp_raw = float(row[1]) if row[1] else 0.0
-            scale = row[3] if row[3] else "Normal"
-            kp_values.append(kp_raw)
-            
-            # LSTM-style: Exponential Moving Average (α=0.3) for temporal smoothing
-            alpha_lstm = 0.3
-            if len(kp_values) == 1:
-                kp_lstm = kp_raw
-            else:
-                kp_lstm = alpha_lstm * kp_raw + (1 - alpha_lstm) * kp_values[-2]
-            
-            # XGBoost-style: Weighted ensemble with recent bias
-            if len(kp_values) >= 3:
-                w = [0.5, 0.3, 0.2]  # Recent values weighted more
-                recent = kp_values[-3:]
-                kp_xgb = sum(w[i] * recent[-(i+1)] for i in range(3))
-            else:
-                kp_xgb = kp_raw * 0.95
-            
-            # Confidence intervals from Kp variance
-            if len(kp_values) >= 3:
-                import statistics
-                std = statistics.stdev(kp_values[-min(len(kp_values), 5):])
-            else:
-                std = 0.5
-            
-            # Hybrid risk formula: risk = 0.3*norm(SW) + 0.4*norm(|Bz|) + 0.2*Kp/9 + 0.1*KpDeriv
-            sw_norm = min(_sw / 800.0, 1.0)
-            bz_norm = min(abs(_bz) / 20.0, 1.0)
-            kp_norm = kp_lstm / 9.0
-            kp_deriv = abs(kp_raw - kp_values[-2]) / 3.0 if len(kp_values) >= 2 else 0
-            risk_score = 0.3 * sw_norm + 0.4 * bz_norm + 0.2 * kp_norm + 0.1 * min(kp_deriv, 1.0)
-            
-            series.append({
-                "hour": idx * 3,
-                "time": time_tag,
-                "kp_lstm": round(kp_lstm, 2),
-                "kp_xgb": round(kp_xgb, 2),
-                "kp_baseline": round(kp_raw * 0.85, 2),
-                "kp_lower_ci": round(max(0.0, kp_lstm - 1.5 * std), 2),
-                "kp_upper_ci": round(min(9.0, kp_lstm + 1.5 * std), 2),
-                "risk_score": round(risk_score, 3),
-                "alert": scale
-            })
-    return series
-
-@app.get("/api/model-metrics")
-def get_model_metrics():
-    """Compute live model performance metrics from NOAA forecast vs actual data"""
-    kp_forecast = fetch_noaa_json("products/noaa-planetary-k-index-forecast.json")
-    kp_actual = fetch_noaa_json("products/noaa-planetary-k-index.json")
-    
-    # Calculate real precision from forecast accuracy
-    correct_predictions = 0
-    total_predictions = 0
-    false_alarms = 0
-    missed_events = 0
-    
-    if kp_actual and len(kp_actual) > 2:
-        actual_vals = []
-        for row in kp_actual[-16:]:
-            try:
-                actual_vals.append(float(row[1]))
-            except:
-                pass
-        
-        if len(actual_vals) >= 4:
-            for i in range(1, len(actual_vals)):
-                predicted_high = actual_vals[i-1] >= 4.0  # Simple persistence forecast
-                actual_high = actual_vals[i] >= 4.0
-                total_predictions += 1
-                if predicted_high == actual_high:
-                    correct_predictions += 1
-                if predicted_high and not actual_high:
-                    false_alarms += 1
-                if not predicted_high and actual_high:
-                    missed_events += 1
-    
-    precision = correct_predictions / max(total_predictions, 1)
-    false_alarm_rate = false_alarms / max(total_predictions, 1)
-    tss = precision - false_alarm_rate  # True Skill Statistic
-    
-    return {
-        "lstm": {
-            "auc_roc": round(0.78 + precision * 0.12, 2),
-            "precision_24h": round(precision, 2),
-            "precision_48h": round(precision * 0.88, 2),
-            "precision_72h": round(precision * 0.72, 2),
-            "training_samples": 420000,
-            "training_period": "2015-2025",
-            "false_alarm_rate": f"{round(false_alarm_rate * 100)}%",
-            "missed_events": missed_events,
-        },
-        "xgboost": {
-            "auc_roc": round(0.80 + precision * 0.10, 2),
-            "feature_importance": {
-                "Bz_GSM": 0.35,
-                "SolarWindSpeed": 0.28,
-                "X-ray_Flux": 0.22,
-                "ProtonDensity": 0.15
-            }
-        },
-        "baselines": {
-            "persistence_auc": round(precision * 0.85, 2),
-            "climatological_auc": 0.55,
-        },
-        "improvement_over_persistence": f"+{round((1 - 0.85) * 100, 1)}%",
-        "tss_score": round(max(0, tss), 2),
-        "total_evaluated": total_predictions,
-        "correct_predictions": correct_predictions,
-    }
-
-@app.get("/api/global-tles")
-def get_global_tles():
-    """Fetches real active TLEs from CelesTrak to ensure no frontend mock data"""
-    cache_key = "celestrak_active_tles"
-    now = datetime.now(timezone.utc)
-    if cache_key in _cache:
-        cached_time, cached_data = _cache[cache_key]
-        if (now - cached_time).total_seconds() < 43200: # 12 hr cache
-            return cached_data
-            
-    try:
-        urls = [
-            "https://celestrak.org/NORAD/elements/stations.txt",
-            "https://celestrak.org/NORAD/elements/starlink.txt",
-            "https://celestrak.org/NORAD/elements/geo.txt",
-            "https://celestrak.org/NORAD/elements/gnss.txt",
-            "https://celestrak.org/NORAD/elements/resource.txt"
-        ]
-        lines = []
-        for u in urls:
-            try:
-                req = requests.get(u, timeout=10.0)
-                if req.status_code == 200:
-                    lines.extend(req.text.splitlines())
-            except:
-                pass
-                
-        if len(lines) > 0:
-            sats = []
-            for i in range(0, len(lines), 3):
-                if i + 2 >= len(lines): break
-                name = lines[i].strip()
-                tle1 = lines[i+1].strip()
-                tle2 = lines[i+2].strip()
-                cat = 'OTHER'
-                if 'STARLINK' in name: cat = 'STARLINK'
-                elif 'NAVSTAR' in name or 'GPS' in name or 'GLONASS' in name or 'GALILEO' in name: cat = 'GPS'
-                elif 'TURKSAT' in name or 'GOKTURK' in name or 'BILSAT' in name or 'IMECE' in name or 'RASAT' in name: cat = 'TURKEY'
-                
-                sats.append({"name": name, "tle1": tle1, "tle2": tle2, "category": cat})
-                
-            final_sats = []
-            starlink_c = 0
-            other_c = 0
-            for s in sats:
-                if s["category"] in ['TURKEY', 'GPS']:
-                    final_sats.append(s)
-                elif s["category"] == 'STARLINK' and starlink_c < 500:
-                    final_sats.append(s)
-                    starlink_c += 1
-                elif other_c < 300:
-                    final_sats.append(s)
-                    other_c += 1
-                    
-            _cache[cache_key] = (now, final_sats)
-            return final_sats
-    except Exception as e:
-        print("TLE Fetch Error:", e)
-    return _cache.get(cache_key, (None, []))[1]
-
-@app.get("/api/historical-scenarios")
-def get_historical_scenarios():
-    return [
-      { "id": 'quebec', "year": '1989', "name": 'Quebec Karartması', "desc": 'Kp=9. 9 saat elektrik kesintisi. GIC (Geomanyetik İndüklenen Akım) sebebiyle trafolar yandı.', "color": 'var(--red)' },
-      { "id": 'halloween', "year": '2003', "name": 'Halloween Fırtınaları', "desc": 'X28+ Flare. NASA uyduları güvenli moda alındı, uçuş rotaları değiştirildi.', "color": 'var(--amber)' },
-      { "id": 'may2024', "year": '2024', "name": 'Mayıs G5 Fırtınası', "desc": "Son 20 yılın en güçlüsü. Tarım GPS sistemleri koptu, auroralar Türkiye'den izlendi.", "color": 'var(--cyan)' }
-    ]
-
-@app.post("/api/webhook")
-async def trigger_webhook(request: Request):
-    """Simulates an alert dispatch endpoint (Webhook/Telegram)"""
-    try:
-        data = await request.json()
-    except:
-        data = {}
-    return {"status": "success", "dispatched": True, "payload": data, "message": "Alan uzmanlarına bildirim gönderildi (G3+ Olayı)."}
+# ============================================================================
+# Health & Cache Endpoints
+# ============================================================================
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "SolarGuard-TR API", "version": "3.0.0", "timestamp": datetime.now(timezone.utc).isoformat()}
+    """Health check endpoint"""
+    return {
+        "status": "ok",
+        "service": "SolarGuard-TR API",
+        "version": "4.0.0",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.post("/api/clear-cache")
+def clear_cache():
+    """Clear all cached data to force fresh API fetches"""
+    cache.clear()
+    logger.info("Cache cleared by user request")
+    return {"status": "success", "message": "Cache cleared successfully"}
+
+
+@app.get("/api/cache-stats")
+def get_cache_stats():
+    """Get cache statistics"""
+    return cache.get_stats()
+
+
+# ============================================================================
+# NOAA Data Endpoints
+# ============================================================================
+
+@app.get("/api/space-weather-history")
+def get_space_weather_history():
+    """
+    Get space weather history with Kp events and realtime telemetry
+    
+    Returns:
+        Dictionary with highlight_events and realtime_telemetry
+    """
+    try:
+        return data_processor.process_kp_history()
+    except Exception as e:
+        logger.error(f"Error processing space weather history: {e}")
+        return {
+            "highlight_events": [],
+            "period": "Error fetching data",
+            "realtime_telemetry": {
+                "solar_wind_speed": None,
+                "proton_density": None,
+                "bz_gsm": None
+            }
+        }
+
+
+@app.get("/api/forecast-series")
+def get_forecast_series():
+    """
+    Get Kp forecast series with ML-style predictions
+    
+    Returns:
+        List of forecast data points with kp_lstm, kp_xgb, confidence intervals
+    """
+    try:
+        return data_processor.process_forecast_series()
+    except Exception as e:
+        logger.error(f"Error processing forecast series: {e}")
+        return []
+
+
+@app.get("/api/model-metrics")
+def get_model_metrics():
+    """
+    Get model performance metrics
+    
+    Returns:
+        Dictionary with LSTM, XGBoost, and baseline metrics
+    """
+    try:
+        return data_processor.process_model_metrics()
+    except Exception as e:
+        logger.error(f"Error processing model metrics: {e}")
+        return {
+            "lstm": {"auc_roc": 0.0, "precision_24h": 0.0},
+            "xgboost": {"auc_roc": 0.0},
+            "baselines": {"persistence_auc": 0.0}
+        }
+
+
+# ============================================================================
+# NOAA X-Ray Flux Endpoints
+# ============================================================================
+
+@app.get("/api/latest-flare")
+async def read_latest_flare():
+    """
+    Get latest solar flare status from NOAA GOES X-Ray Flux
+    
+    Returns:
+        Dictionary with time_tag, flux, flare_class, and satellite
+    """
+    data = await noaa_client.get_latest_xray_flux()
+    if not data:
+        raise HTTPException(status_code=503, detail="Veri kaynağına ulaşılamıyor")
+    return data
+
+
+@app.get("/api/goes-xray")
+async def read_goes_xray_flux():
+    """
+    Get latest GOES X-Ray Flux data with 2-minute cache
+    
+    Returns:
+        Dictionary with time_tag, flux, flare_class, and satellite
+    """
+    data = await noaa_client.get_goes_xray_flux()
+    if not data:
+        raise HTTPException(status_code=503, detail="GOES X-Ray verisine ulaşılamıyor")
+    return data
+
+
+@app.get("/api/telemetry-summary")
+async def get_telemetry_summary():
+    """
+    Get complete telemetry summary with all space weather parameters
+    
+    Returns:
+        Dictionary with wind_speed, density, imf_bz, proton_flux, kp_index, and status
+    """
+    try:
+        # Get all telemetry data from NOAA client
+        wind_data = noaa_client.get_solar_wind_data()  # Speed and Density
+        mag_data = noaa_client.get_mag_field_data()    # Bz
+        proton_data = noaa_client.get_proton_flux()    # Proton
+        kp_data = noaa_client.get_realtime_kp()        # Kp
+        
+        return {
+            "wind_speed": wind_data.get("speed"),
+            "density": wind_data.get("density"),
+            "imf_bz": mag_data.get("bz"),
+            "proton_flux": proton_data.get("flux"),
+            "kp_index": kp_data.get("kp"),
+            "status": "active"
+        }
+    except Exception as e:
+        logger.error(f"Error fetching telemetry summary: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+# ============================================================================
+# NASA DONKI Data Endpoints
+# ============================================================================
+
+@app.get("/api/recent-flares")
+def get_recent_flares(days: int = Query(default=30, ge=1, le=365)):
+    """
+    Get recent solar flare data
+    
+    Args:
+        days: Number of days to look back (1-365)
+    
+    Returns:
+        List of flare events
+    """
+    try:
+        flares = nasa_client.get_solar_flares(days=days)
+        return flares if flares else []
+    except Exception as e:
+        logger.error(f"Error fetching recent flares: {e}")
+        return []
+
+
+@app.get("/api/geomagnetic-storms")
+def get_geomagnetic_storms(days: int = Query(default=30, ge=1, le=365)):
+    """
+    Get geomagnetic storm data
+    
+    Args:
+        days: Number of days to look back (1-365)
+    
+    Returns:
+        List of storm events
+    """
+    try:
+        storms = nasa_client.get_geomagnetic_storms(days=days)
+        return storms if storms else []
+    except Exception as e:
+        logger.error(f"Error fetching geomagnetic storms: {e}")
+        return []
+
+
+@app.get("/api/cme-events")
+def get_cme_events(days: int = Query(default=30, ge=1, le=365)):
+    """
+    Get coronal mass ejection (CME) data
+    
+    Args:
+        days: Number of days to look back (1-365)
+    
+    Returns:
+        List of CME events
+    """
+    try:
+        cme = nasa_client.get_cme_events(days=days)
+        return cme if cme else []
+    except Exception as e:
+        logger.error(f"Error fetching CME events: {e}")
+        return []
+
+
+@app.get("/api/donki-notifications")
+def get_donki_notifications(
+    days: int = Query(default=30, ge=1, le=365),
+    notification_type: str = Query(default="all")
+):
+    """
+    Get DONKI notifications
+    
+    Args:
+        days: Number of days to look back (1-365)
+        notification_type: Type of notification (all, FLR, CME, etc.)
+    
+    Returns:
+        List of notifications
+    """
+    try:
+        notifications = nasa_client.get_notifications(days=days, notification_type=notification_type)
+        return notifications if notifications else []
+    except Exception as e:
+        logger.error(f"Error fetching DONKI notifications: {e}")
+        return []
+
+
+@app.get("/api/interplanetary-shocks")
+def get_interplanetary_shocks(
+    days: int = Query(default=30, ge=1, le=365),
+    location: str = Query(default="Earth")
+):
+    """
+    Get interplanetary shock data
+    
+    Args:
+        days: Number of days to look back (1-365)
+        location: Location (Earth, etc.)
+    
+    Returns:
+        List of shock events
+    """
+    try:
+        shocks = nasa_client.get_interplanetary_shocks(days=days, location=location)
+        return shocks if shocks else []
+    except Exception as e:
+        logger.error(f"Error fetching interplanetary shocks: {e}")
+        return []
+
+
+@app.get("/api/wsa-enlil")
+def get_wsa_enlil(days: int = Query(default=15, ge=1, le=365)):
+    """
+    Get WSA-Enlil simulation data
+    
+    Args:
+        days: Number of days to look back (1-365)
+    
+    Returns:
+        List of simulation data
+    """
+    try:
+        wsa_enlil = nasa_client.get_wsa_enlil_simulations(days=days)
+        return wsa_enlil if wsa_enlil else []
+    except Exception as e:
+        logger.error(f"Error fetching WSA-Enlil simulations: {e}")
+        return []
+
+
+@app.get("/api/radiation-belt-enhancement")
+def get_radiation_belt_enhancement(days: int = Query(default=30, ge=1, le=365)):
+    """
+    Get radiation belt enhancement data
+    
+    Args:
+        days: Number of days to look back (1-365)
+    
+    Returns:
+        List of RBE events
+    """
+    try:
+        rbe = nasa_client.get_radiation_belt_enhancement(days=days)
+        return rbe if rbe else []
+    except Exception as e:
+        logger.error(f"Error fetching radiation belt enhancement: {e}")
+        return []
+
+
+# ============================================================================
+# Turkish Asset Risk Endpoints
+# ============================================================================
+
+@app.get("/api/turkish-asset-risk")
+def get_turkish_asset_risk(
+    kp: Optional[float] = Query(default=None),
+    flare_class: Optional[float] = Query(default=None)
+):
+    """
+    Get Turkish asset risk assessment
+    
+    Args:
+        kp: Current Kp index (optional, will fetch if not provided)
+        flare_class: Flare class (optional, will estimate if not provided)
+    
+    Returns:
+        Dictionary with satellite_risks and ground_risks
+    """
+    try:
+        # Get current Kp if not provided
+        if kp is None:
+            kp = noaa_client.get_current_kp()
+            if kp is None:
+                kp = 3.0  # Default value
+        
+        # Estimate flare class if not provided
+        if flare_class is None:
+            flare_class = min(max((kp - 2.0) * 1.5, 1.0), 9.0)
+        
+        # Calculate M+ event probability
+        prob_mx = min(kp / 10.0, 0.99)
+        
+        # Generate risk report
+        return generate_turkish_risk_report(
+            kp_forecast_24h=kp,
+            flr_class_forecast=flare_class,
+            prob_mx_event=prob_mx
+        )
+    except Exception as e:
+        logger.error(f"Error generating Turkish asset risk: {e}")
+        return {
+            "satellite_risks": {},
+            "ground_risks": {},
+            "prob_mx_event": 0.0
+        }
+
+
+# ============================================================================
+# TLE Data Endpoints
+# ============================================================================
+
+@app.get("/api/global-tles")
+def get_global_tles():
+    """
+    Fetch real active TLEs from CelesTrak
+    
+    Returns:
+        List of satellite TLE data
+    """
+    cache_key = "celestrak_active_tles"
+    
+    # Try cache first
+    cached_data = cache.get(cache_key)
+    if cached_data is not None:
+        return cached_data
+    
+    try:
+        from .http_client import http_client
+        
+        urls = [
+            f"{config.CELESTRAK_BASE}/stations.txt",
+            f"{config.CELESTRAK_BASE}/starlink.txt",
+            f"{config.CELESTRAK_BASE}/geo.txt",
+            f"{config.CELESTRAK_BASE}/gnss.txt",
+            f"{config.CELESTRAK_BASE}/resource.txt"
+        ]
+        
+        lines = []
+        for url in urls:
+            try:
+                text = http_client.get_text(url)
+                if text:
+                    lines.extend(text.splitlines())
+            except Exception as e:
+                logger.warning(f"Failed to fetch TLE from {url}: {e}")
+        
+        if not lines:
+            return []
+        
+        # Parse TLE data
+        sats = []
+        for i in range(0, len(lines), 3):
+            if i + 2 >= len(lines):
+                break
+            
+            name = lines[i].strip()
+            tle1 = lines[i+1].strip()
+            tle2 = lines[i+2].strip()
+            
+            # Categorize satellite
+            category = 'OTHER'
+            if 'STARLINK' in name:
+                category = 'STARLINK'
+            elif any(x in name for x in ['NAVSTAR', 'GPS', 'GLONASS', 'GALILEO']):
+                category = 'GPS'
+            elif any(x in name for x in ['TURKSAT', 'GOKTURK', 'BILSAT', 'IMECE', 'RASAT']):
+                category = 'TURKEY'
+            
+            sats.append({
+                "name": name,
+                "tle1": tle1,
+                "tle2": tle2,
+                "category": category
+            })
+        
+        # Limit counts by category
+        final_sats = []
+        starlink_count = 0
+        other_count = 0
+        
+        for sat in sats:
+            if sat["category"] in ['TURKEY', 'GPS']:
+                final_sats.append(sat)
+            elif sat["category"] == 'STARLINK' and starlink_count < 500:
+                final_sats.append(sat)
+                starlink_count += 1
+            elif other_count < 300:
+                final_sats.append(sat)
+                other_count += 1
+        
+        # Cache the result
+        cache.set(cache_key, final_sats, config.TLE_CACHE_TTL)
+        logger.info(f"Fetched {len(final_sats)} TLEs from CelesTrak")
+        
+        return final_sats
+        
+    except Exception as e:
+        logger.error(f"Error fetching global TLEs: {e}")
+        return []
+
+
+# ============================================================================
+# Historical Scenarios Endpoint
+# ============================================================================
+
+@app.get("/api/historical-scenarios")
+def get_historical_scenarios():
+    """
+    Get historical space weather scenarios
+    
+    Returns:
+        List of historical scenarios
+    """
+    return [
+        {
+            "id": 'quebec',
+            "year": '1989',
+            "name": 'Quebec Karartması',
+            "desc": 'Kp=9. 9 saat elektrik kesintisi. GIC (Geomanyetik İndüklenen Akım) sebebiyle trafolar yandı.',
+            "color": 'var(--red)'
+        },
+        {
+            "id": 'halloween',
+            "year": '2003',
+            "name": 'Halloween Fırtınaları',
+            "desc": 'X28+ Flare. NASA uyduları güvenli moda alındı, uçuş rotaları değiştirildi.',
+            "color": 'var(--amber)'
+        },
+        {
+            "id": 'may2024',
+            "year": '2024',
+            "name": 'Mayıs G5 Fırtınası',
+            "desc": "Son 20 yılın en güçlüsü. Tarım GPS sistemleri koptu, auroralar Türkiye'den izlendi.",
+            "color": 'var(--cyan)'
+        }
+    ]
+
+
+# ============================================================================
+# Webhook Endpoint
+# ============================================================================
+
+@app.post("/api/webhook")
+async def trigger_webhook(request: Request):
+    """
+    Simulates an alert dispatch endpoint (Webhook/Telegram)
+    
+    Returns:
+        Success response
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    
+    logger.info(f"Webhook triggered with payload: {data}")
+    return {
+        "status": "success",
+        "dispatched": True,
+        "payload": data,
+        "message": "Alan uzmanlarına bildirim gönderildi (G3+ Olayı)."
+    }
+
+
+# ============================================================================
+# Application Startup
+# ============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Log application startup"""
+    logger.info("=" * 60)
+    logger.info("SolarGuard-TR API v4.0.0 Starting...")
+    logger.info("=" * 60)
+    logger.info(f"NOAA Base URL: {config.NOAA_BASE}")
+    logger.info(f"NASA Base URL: {config.DONKI_BASE}")
+    logger.info(f"NOAA Cache TTL: {config.NOAA_CACHE_TTL}")
+    logger.info(f"NASA Cache TTL: {config.NASA_CACHE_TTL}")
+    logger.info("=" * 60)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Log application shutdown"""
+    logger.info("SolarGuard-TR API Shutting down...")
+    from .http_client import http_client
+    http_client.close()
+
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "api.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
+    )
+
+
+# ============================================================================
+# GOES X-Ray Endpoint (Direct Implementation)
+# ============================================================================
+
+@app.get("/api/goes-xray")
+def get_goes_xray():
+    """
+    Get latest GOES X-Ray Flux data with 2-minute cache
+    
+    Returns:
+        Dictionary with time_tag, flux, flare_class, and satellite
+    """
+    cache_key = "goes_xray"
+    now = datetime.now(timezone.utc)
+    if cache_key in _cache:
+        cached_time, cached_data = _cache[cache_key]
+        if (now - cached_time).total_seconds() < 120:
+            return cached_data
+    try:
+        r = requests.get(
+            "https://services.swpc.noaa.gov/json/goes/primary/xrays-1-day.json",
+            timeout=10
+        )
+        if r.status_code == 200:
+            data = r.json()
+            long_band = [d for d in data if d.get("energy") == "0.1-0.8nm" or d.get("band") == "0.1-0.8nm"]
+            if not long_band:
+                long_band = data
+            latest = long_band[-1]
+            flux = latest.get("flux", 0) or 0
+            if flux >= 1e-4: cls = f"X{flux/1e-4:.1f}"
+            elif flux >= 1e-5: cls = f"M{flux/1e-5:.1f}"
+            elif flux >= 1e-6: cls = f"C{flux/1e-6:.1f}"
+            elif flux >= 1e-7: cls = f"B{flux/1e-7:.1f}"
+            else: cls = f"A{flux/1e-8:.1f}"
+            result = {"time_tag": latest.get("time_tag"), "flux": flux, "flare_class": cls, "satellite": latest.get("satellite")}
+            _cache[cache_key] = (now, result)
+            return result
+    except Exception as e:
+        print(f"GOES X-Ray Error: {e}")
+    return {"time_tag": None, "flux": None, "flare_class": "Bilinmiyor", "satellite": None}
