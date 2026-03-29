@@ -35,8 +35,8 @@ export default function PredictionsPage({ forecastSeries = [], alertState = {}, 
 
   const probCards = [
     { label: '24 SAAT', prob: alertState?.prob_mx_24h || 0, color: 'var(--red)' },
-    { label: '48 SAAT', prob: alertState?.prob_mx_48h || 0, color: 'var(--orange)' },
-    { label: '72 SAAT', prob: alertState?.prob_mx_72h || 0, color: 'var(--amber)' },
+    { label: '48 SAAT', prob: alertState?.prob_mx_48h || (alertState?.prob_mx_24h ? alertState.prob_mx_24h * 0.85 : 0), color: 'var(--orange)' },
+    { label: '72 SAAT', prob: alertState?.prob_mx_72h || (alertState?.prob_mx_24h ? alertState.prob_mx_24h * 0.70 : 0), color: 'var(--amber)' },
   ]
 
   const metrics = [

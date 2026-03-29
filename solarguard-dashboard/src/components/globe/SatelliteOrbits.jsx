@@ -2,8 +2,9 @@ import { useRef, useMemo, useEffect, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Html, Line } from '@react-three/drei'
 import * as THREE from 'three'
-import { twoline2satrec, propagate, gstime, eciToGeodetic } from 'sgp4'
+import { twoline2satrec, propagate, gstime, eciToGeodetic, degreesLat, degreesLong } from 'satellite.js'
 import { latLonToVec3 } from '../../utils/latLonToVec3'
+import { useSettings } from '../../contexts/SettingsContext'
 
 const SAT_COLORS = {
   TURKEY: new THREE.Color('#ff2222'),
@@ -13,6 +14,8 @@ const SAT_COLORS = {
 }
 
 export default function SatelliteOrbits({ visible = true, filter = 'ALL', timeMultiplier = 1, backendEnabled = true }) {
+  const { settings } = useSettings()
+
   const meshRef = useRef()
   const [hoveredIndex, setHoveredIndex] = useState(null)
   const [selectedIndex, setSelectedIndex] = useState(null)

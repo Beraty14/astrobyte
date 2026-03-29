@@ -7,7 +7,7 @@ function Marker({ asset }) {
   const ringRef = useRef()
   const [hovered, setHovered] = useState(false)
   const pos = latLonToVec3(asset.lat, asset.lon, 1.01)
-  const riskColors = { RED: '#ff2222', ORANGE: '#ff8c00', YELLOW: '#ffdc00', GREEN: '#00ff88' }
+  const riskColors = { RED: '#ff2222', ORANGE: '#ff8c00', YELLOW: '#ffdc00', GREEN: '#00ff88', CALIBRATION1: '#ff0000', CALIBRATION2: '#0000ff' }
   const color = riskColors[asset.level] || '#00fff0'
 
   useFrame(({ clock }) => {

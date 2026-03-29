@@ -6,12 +6,42 @@ import { useSettings } from '../contexts/SettingsContext'
 import { createTranslator } from '../utils/translations'
 import TurkeyMap from '../components/maps/TurkeyMap'
 
+// Grid Connections (Mockup for cascading failure visualization)
+const GRID_CONNECTIONS = [
+  { id: 'c1', from: 'İstanbul', to: 'Ankara Hub' },
+  { id: 'c2', from: 'Ankara Hub', to: 'İzmir' },
+  { id: 'c3', from: 'Ankara Hub', to: 'Gölbaşı' },
+  { id: 'c4', from: 'TÜBİTAK', to: 'İstanbul' },
+  { id: 'c5', from: 'İstanbul', to: 'İzmir' }
+]
+
 export default function RiskAnalysisPage({ groundAssets = [] }) {
   const { settings } = useSettings()
   const t = createTranslator(settings.language)
   const [selectedAsset, setSelectedAsset] = useState(null)
   const [historicalScenarios, setHistoricalScenarios] = useState([])
   const [mapScale, setMapScale] = useState(1)
+  const [blackoutStage, setBlackoutStage] = useState(0)
+  
+  const isSimulation = settings.simulationMode;
+
+  // Power grid failure cascade effect during simulation
+  useEffect(() => {
+    if (!isSimulation) {
+      setBlackoutStage(0);
+      return;
+    }
+    
+    // Animate stage sequentially
+    let stage = 0;
+    const interval = setInterval(() => {
+      stage += 1;
+      setBlackoutStage(stage);
+      if (stage >= 6) clearInterval(interval);
+    }, 1500); // Trigger next cascade every 1.5s
+    
+    return () => clearInterval(interval);
+  }, [isSimulation])
 
   useEffect(() => {
     if (!settings.backendEnabled) {
@@ -72,14 +102,52 @@ export default function RiskAnalysisPage({ groundAssets = [] }) {
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               style={{ width: '100%', height: '100%', position: 'relative', originX: 0.5, originY: 0.5 }}
             >
-              {/* Detailed Turkey Map Background */}
               <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
-                <TurkeyMap color="var(--cyan)" opacity={0.35} />
+                <TurkeyMap color="var(--cyan)" opacity={!isSimulation ? 0.35 : Math.max(0.1, 0.35 - (blackoutStage * 0.05))} />
               </div>
               <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(0,255,240,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,240,0.03) 1px, transparent 1px)', backgroundSize: '50px 50px', zIndex: 0 }} />
 
+              {/* Dynamic GIC Blackout Grid Lines (SVG) */}
+              <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none' }}>
+                {GRID_CONNECTIONS.map((conn, idx) => {
+                  // Find coordinates
+                  const fromAsset = groundAssets.find(a => a.name.includes(conn.from));
+                  const toAsset = groundAssets.find(a => a.name.includes(conn.to));
+                  if(!fromAsset || !toAsset) return null;
+                  
+                  // Same coordinate mapping as below
+                  const getCoords = (asset) => {
+                    if (asset.name.includes("İstanbul")) return { x: 20.5, y: 21.3 };
+                    if (asset.name.includes("İzmir")) return { x: 12.0, y: 53.3 };
+                    if (asset.name.includes("Ankara Hub")) return { x: 35.5, y: 40.5 };
+                    if (asset.name.includes("Gölbaşı")) return { x: 38.5, y: 44.5 };
+                    if (asset.name.includes("TÜBİTAK")) return { x: 32.5, y: 36.5 };
+                    return { x: ((88 + (asset.lon - 26.5) * 46.8) / 1000) * 100, y: ((81 + (41.6 - asset.lat) * 52.9) / 422) * 100 }
+                  };
+                  
+                  const p1 = getCoords(fromAsset);
+                  const p2 = getCoords(toAsset);
+                  
+                  const isBlackedOut = blackoutStage > idx;
+                  const isFlashing = blackoutStage === idx;
+                  
+                  return (
+                    <motion.line 
+                      key={conn.id}
+                      x1={`${p1.x}%`} y1={`${p1.y}%`}
+                      x2={`${p2.x}%`} y2={`${p2.y}%`}
+                      stroke={isSimulation ? (isBlackedOut ? 'rgba(0,0,0,0)' : (isFlashing ? '#ff0000' : '#ffff00')) : 'rgba(0,255,240,0.3)'}
+                      strokeWidth={isFlashing ? 3 : 1}
+                      strokeDasharray={isSimulation && !isBlackedOut ? "5,5" : "none"}
+                      animate={isFlashing ? { opacity: [1, 0, 1, 0, 1] } : {}}
+                      transition={{ duration: 0.5, repeat: Infinity }}
+                    />
+                  )
+                })}
+              </svg>
+
             {/* Asset markers */}
-            {groundAssets.map(asset => {
+            {groundAssets.map((asset, index) => {
               const color = getRiskColor(asset.level)
               
               // Base mathematical projection fallback
@@ -141,10 +209,10 @@ export default function RiskAnalysisPage({ groundAssets = [] }) {
                     width: isSelected ? dotSize + 8 : dotSize + 4,
                     height: isSelected ? dotSize + 8 : dotSize + 4,
                     borderRadius: '50%',
-                    background: 'rgba(0,0,0,0.8)',
-                    border: `2px solid ${color}`,
-                    boxShadow: isSelected ? `0 0 15px ${color}` : `0 0 8px ${color}`,
-                    color: color,
+                    background: (isSimulation && blackoutStage > (index % 5)) ? 'black' : 'rgba(0,0,0,0.8)',
+                    border: `2px solid ${(isSimulation && blackoutStage > (index % 5)) ? '#333' : color}`,
+                    boxShadow: (isSimulation && blackoutStage > (index % 5)) ? 'none' : (isSelected ? `0 0 15px ${color}` : `0 0 8px ${color}`),
+                    color: (isSimulation && blackoutStage > (index % 5)) ? '#555' : color,
                     transition: 'all 0.2s'
                   }}>
                     <span className="material-symbols-outlined" style={{ fontSize: isSelected ? dotSize + 2 : dotSize - 2 }}>{iconStr}</span>

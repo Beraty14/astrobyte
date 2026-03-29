@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { Sphere, useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { latLonToVec3 } from '../../utils/latLonToVec3'
 
 const vertexShader = `
   varying vec2 vUv;
@@ -64,20 +65,11 @@ export function getSunDirection(date) {
   const sunLat = -23.44 * Math.cos((360 / 365) * (dayOfYear + 10) * (Math.PI / 180))
   
   // Calculate the Earth longitude that is currently at Noon (facing the sun)
-  // At 12:00 UTC, the 0° Meridian (London) faces the sun.
-  // We add 180 here to exactly match the texture's native UV seam on the SphereGeometry.
-  const noonLon = (12 - hours) * 15 + 180
+  // At 12:00 UTC, the 0° Meridian (Greenwich) faces the sun.
+  const noonLon = (12 - hours) * 15
 
-  // Map this to our 3D globe's native coordinate system (theta/phi Spherical mapping)
-  // This physically moves the sun light identical to how ground coordinates map
-  const theta = (noonLon + 90) * (Math.PI / 180)
-  const phi = (90 - sunLat) * (Math.PI / 180)
-
-  const x = -Math.sin(phi) * Math.cos(theta)
-  const y = Math.cos(phi)
-  const z = Math.sin(phi) * Math.sin(theta)
-
-  return new THREE.Vector3(x, y, z).normalize()
+  // Pass it exactly into our mathematically verified coordinate engine
+  return latLonToVec3(sunLat, noonLon, 1.0).normalize()
 }
 
 function EarthFallback() {

@@ -81,7 +81,21 @@ export default function SettingsPage({ isLive }) {
             <span className="font-data" style={{ fontSize: 9, color: healthStatus === 'OK' ? '#00ff87' : healthStatus === 'OFF' ? 'var(--text-muted)' : '#ff2222' }}>
               {healthStatus === 'OK' ? t('BAĞLI', 'CONNECTED') : healthStatus === 'OFF' ? t('KAPALI', 'DISABLED') : t('BAĞLANTI YOK', 'NO CONNECTION')}
             </span>
-            <Toggle checked={settings.backendEnabled} onChange={v => updateSetting('backendEnabled', v)} />
+            <Toggle checked={settings.backendEnabled} onChange={v => {
+              updateSetting('backendEnabled', v)
+              if (v) updateSetting('simulationMode', false)
+            }} />
+          </div>
+        </SettingsRow>
+        <SettingsRow label={t('Simülasyon Modu (1989 Quebec)', 'Simulation Mode (1989 Quebec)')} tooltip={t('Kıyamet Senaryosu testi. Backend kapanır ve mock X-sınıfı süper fırtına verisi basılarak UI stres testi yapılır.', 'Doomsday Scenario test. Backend turns off and mock X-class super storm data is injected to stress test the UI.')}>
+          <div className="flex items-center gap-3">
+            <span className="font-data" style={{ fontSize: 9, color: settings.simulationMode ? 'var(--red)' : 'var(--text-muted)', fontWeight: settings.simulationMode ? 800 : 400 }}>
+              {settings.simulationMode ? t('AKTİF', 'ACTIVE') : t('PASİF', 'INACTIVE')}
+            </span>
+            <Toggle checked={settings.simulationMode} onChange={v => {
+              updateSetting('simulationMode', v)
+              if (v) updateSetting('backendEnabled', false) // Use API data handles the fetch replacement
+            }} />
           </div>
         </SettingsRow>
       </SettingsSection>
@@ -131,7 +145,7 @@ export default function SettingsPage({ isLive }) {
           <div className="flex gap-2">
             {[
               { id: 'Düşük', label: t('Düşük', 'Low') },
-              { id: 'Orta', label: 'Orta' },
+              { id: 'Orta', label: t('Orta', 'Medium') },
               { id: 'Yüksek', label: t('Yüksek', 'High') }
             ].map(q => (
               <button key={q.id} onClick={() => updateSetting('globeQuality', q.id)} className="font-data"

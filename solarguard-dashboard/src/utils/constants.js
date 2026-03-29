@@ -4,6 +4,7 @@ export const NAV_ITEMS = [
   { icon: "satellite_alt", label: "Uydu Risk", route: "/satellite-risk" },
   { icon: "insights", label: "Tahminler", route: "/predictions" },
   { icon: "speed", label: "Telemetri", route: "/telemetry" },
+  { icon: "crisis_alert", label: "Karar Merkezi", route: "/operations-center" },
   { icon: "warning", label: "Risk Analizi", route: "/risk-analysis" },
   { icon: "terminal", label: "Sistem Logları", route: "/system-logs" },
   { icon: "notifications", label: "Bildirimler", route: "/notifications" },

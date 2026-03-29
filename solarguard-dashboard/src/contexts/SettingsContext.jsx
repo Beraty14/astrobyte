@@ -22,6 +22,8 @@ const defaultSettings = {
   globeQuality: 'Orta',
   animations: true,
   scanlines: true,
+  simulationMode: false,
+  shieldMode: false,
 }
 
 export function SettingsProvider({ children }) {

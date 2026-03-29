@@ -88,18 +88,23 @@ export default function SolarFlaresPage({ recentFlares, alertState }) {
         {/* Current Solar Activity */}
         <div className="glass-card p-5">
           <div style={{ fontSize: 9, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 8 }}>SON PATLAMA</div>
-          <div className="font-data glow-text" style={{ fontSize: 48, fontWeight: 700, color: 'var(--red)' }}>
-            {alertState.current_flare}
+          <div className="font-data glow-text" style={{ fontSize: 48, fontWeight: 700, color: getFlareColor(alertState.current_flare) }}>
+            {alertState.current_flare || '-'}
           </div>
-          <div className="font-data" style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Bugün (T-1 Saat) / Güncel</div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{alertState.active_region || '-'}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Süre: -</div>
+          <div className="font-data" style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+            {latestFlare ? `${formatDate(latestFlare.peakTime)} / ${formatTime(latestFlare.peakTime)}` : 'Güncel Sensör Verisi Bekleniyor'}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--cyan)', marginTop: 2, fontWeight: 600 }}> {alertState.active_region !== 'Araştırılıyor' ? `Aktif Bölge: ${alertState.active_region}` : 'Lokasyon Tespiti Sürüyor'}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            Etki Süresi: {latestFlare ? Math.round((new Date(latestFlare.endTime) - new Date(latestFlare.beginTime)) / 60000) + ' dakika' : '-'}
+          </div>
           <div className="flex gap-1 mt-3">
             {recentFlares.slice(0, 5).map((f, idx) => (
               <span key={`dot-${idx}`} style={{
                 width: 10, height: 10, borderRadius: '50%',
                 background: getFlareColor(f.classType), display: 'inline-block',
-              }} />
+                border: '1px solid rgba(255,255,255,0.2)'
+              }} title={f.classType} />
             ))}
           </div>
         </div>
@@ -107,10 +112,10 @@ export default function SolarFlaresPage({ recentFlares, alertState }) {
         {/* Solar Cycle */}
         <div className="glass-card p-5">
           <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 8 }}>
-            Güneş Döngüsü 25 — Pik Aktivite Dönemi
+            Güneş Döngüsü 25 (Aktivite Fazı)
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
-            Mevcut Faz: Maksimum yakını (2025-2026)
+            Şu An (Yıl {new Date().getFullYear()}): <span style={{ color: 'var(--cyan)' }}>Sistem Maksimum Döngüde</span>
           </div>
           <svg width="100%" height="60" viewBox="0 0 300 60">
             <path d="M 0 50 Q 50 50, 75 30 Q 100 10, 150 15 Q 180 10, 200 8 Q 230 10, 260 30 Q 290 50, 300 50" fill="none" stroke="var(--cyan-dim)" strokeWidth="2" />

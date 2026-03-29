@@ -4,6 +4,7 @@ import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 import Turksat5AModel from './Turksat5AModel'
 import { latLonToVec3 } from '../../utils/latLonToVec3'
+import { useSettings } from '../../contexts/SettingsContext'
 
 /* ═══════════════════════════════════════════════════════════════
    TURKSAT 5A ORBITAL SYSTEM
@@ -24,9 +25,11 @@ const TURKSAT_5A = {
   bus: 'Eurostar E3000EOR',
   mass_kg: 3500,
   power_kw: 12,
+  propulsion: 'Elektrikli',
   transponders: '42 Ku-band',
   launchDate: '2021-01-08',
   launchVehicle: 'SpaceX Falcon 9',
+  launchLocation: 'Cape Canaveral, ABD',
   designLife: '15+ yıl',
   orbitType: 'GEO (35,786 km)',
   services: ['TV Yayıncılığı', 'Genişbant İnternet', 'Veri İletişimi'],
@@ -370,7 +373,9 @@ function DetailCard({ liveData, onClose, position }) {
             {[
               { label: 'Üretici', value: TURKSAT_5A.manufacturer },
               { label: 'Platform', value: TURKSAT_5A.bus },
+              { label: 'İtki', value: TURKSAT_5A.propulsion },
               { label: 'Fırlatma', value: `${TURKSAT_5A.launchVehicle} • ${TURKSAT_5A.launchDate}` },
+              { label: 'Fırlatma Üssü', value: TURKSAT_5A.launchLocation },
             ].map((item, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                 <span style={{ color: 'rgba(255,255,255,0.5)' }}>{item.label}</span>
@@ -435,7 +440,10 @@ function DetailCard({ liveData, onClose, position }) {
 }
 
 /* ═══════════════════ MAIN SYSTEM ═══════════════════ */
-export default function Turksat5ASystem({ visible = true }) {
+export default function Turksat5ASystem({ visible = true, alertLevel = null }) {
+  const { settings } = useSettings()
+  const isShieldActive = settings.shieldMode
+
   const [isSelected, setIsSelected] = useState(false)
   const [liveData, setLiveData] = useState(null)
   const [isHovered, setIsHovered] = useState(false)
@@ -567,18 +575,18 @@ export default function Turksat5ASystem({ visible = true }) {
           <Html position={[0, 0.2, 0]} style={{ pointerEvents: 'none' }} center>
             <div style={{
               background: 'rgba(5,8,22,0.92)',
-              border: '1px solid rgba(0, 255, 240, 0.4)',
+              border: `1px solid ${alertLevel === 'RED' ? 'rgba(255, 34, 34, 0.8)' : alertLevel === 'ORANGE' ? 'rgba(255, 140, 66, 0.8)' : 'rgba(0, 255, 240, 0.4)'}`,
               padding: '6px 12px',
               borderRadius: 6,
               whiteSpace: 'nowrap',
               backdropFilter: 'blur(8px)',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+              boxShadow: alertLevel === 'RED' ? '0 4px 20px rgba(255, 34, 34, 0.4)' : alertLevel === 'ORANGE' ? '0 4px 20px rgba(255, 140, 66, 0.4)' : '0 4px 20px rgba(0,0,0,0.6)',
             }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: '#fff', letterSpacing: '0.05em' }}>
-                🛰️ TÜRKSAT 5A
+              <div style={{ fontSize: 12, fontWeight: 800, color: alertLevel === 'RED' ? '#ff2222' : alertLevel === 'ORANGE' ? '#ff8c42' : '#fff', letterSpacing: '0.05em' }}>
+                {alertLevel === 'RED' ? '⚠️ ' : ''}🛰️ TÜRKSAT 5A
               </div>
-              <div style={{ fontSize: 9, color: 'rgba(0,255,240,0.8)', fontFamily: "'Space Mono', monospace", marginTop: 2 }}>
-                GEO • 31°E • Tıkla → Detaylar
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', fontFamily: "'Space Mono', monospace", marginTop: 2 }}>
+                GEO • 31°E • {alertLevel === 'RED' ? 'KRİTİK RİSK (Yüzey Şarjı)' : alertLevel === 'ORANGE' ? 'UYARI (Minör Etki)' : 'Tıkla → Detaylar'}
               </div>
             </div>
           </Html>

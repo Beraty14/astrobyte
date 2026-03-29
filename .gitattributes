@@ -1,0 +1,4 @@
+# Git LFS — Large File Storage
+# 3D Uydu Modelleri (GLTF/GLB dosyaları GitHub 100MB limitini aşar)
+*.glb filter=lfs diff=lfs merge=lfs -text
+*.gltf filter=lfs diff=lfs merge=lfs -text

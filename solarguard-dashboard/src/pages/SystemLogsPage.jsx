@@ -4,11 +4,11 @@ import { motion } from "framer-motion";
 import { useSettings } from '../contexts/SettingsContext';
 import { createTranslator } from '../utils/translations';
 
-export default function SystemLogsPage({ logsProp = [] }) {
+export default function SystemLogsPage({ systemLogs = [] }) {
   const { settings } = useSettings()
   const t = createTranslator(settings.language)
   const [localLogs, setLocalLogs] = useState([]);
-  const logs = logsProp.length > 0 ? logsProp : localLogs;
+  const logs = systemLogs.length > 0 ? systemLogs : localLogs;
   const [autoScroll, setAutoScroll] = useState(true);
   const scrollRef = useRef(null);
 
@@ -93,7 +93,7 @@ export default function SystemLogsPage({ logsProp = [] }) {
                   [{log.level}]
                 </span>
                 <span style={{ color: 'var(--cyan)', width: 140, flexShrink: 0, opacity: 0.8 }}>
-                  [{log.source}]
+                  [{log.process || 'SYSTEM'}]
                 </span>
                 <span className="flex-1 ml-2">
                   — {log.message}

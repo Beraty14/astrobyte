@@ -12,11 +12,12 @@ import RiskAnalysisPage from './pages/RiskAnalysisPage'
 import SystemLogsPage from './pages/SystemLogsPage'
 import NotificationsPage from './pages/NotificationsPage'
 import SettingsPage from './pages/SettingsPage'
+import OperationsCenterPage from './pages/OperationsCenterPage'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 
 function AppContent() {
   const { settings } = useSettings()
-  const data = useApiData(settings.backendEnabled)
+  const data = useApiData()
 
   return (
     <BrowserRouter>
@@ -94,6 +95,7 @@ function AppContent() {
               />
             } />
             <Route path="/telemetry" element={<TelemetryPage />} />
+            <Route path="/operations-center" element={<OperationsCenterPage />} />
             <Route path="/risk-analysis" element={
               <RiskAnalysisPage groundAssets={data.groundAssets} />
             } />
@@ -102,7 +104,7 @@ function AppContent() {
               <SystemLogsPage systemLogs={data.systemLogs} />
             } />
             <Route path="/notifications" element={
-              <NotificationsPage notifications={data.notifications} />
+              <NotificationsPage notifications={data.notifications || []} />
             } />
             <Route path="/settings" element={<SettingsPage isLive={data.isLive} />} />
           </Routes>

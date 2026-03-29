@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
-import { twoline2satrec, propagate, gstime, eciToGeodetic } from 'sgp4'
+import { twoline2satrec, propagate, gstime, eciToGeodetic, degreesLat, degreesLong } from 'satellite.js'
 import { latLonToVec3 } from '../../utils/latLonToVec3'
 
 // Preload standard Earth radius (km)
@@ -110,6 +110,8 @@ function DetailCard({ liveData, config, onClose, position }) {
               { label: 'YÖRÜNGE', value: config.orbitType, icon: '🌍' },
               { label: 'KÜTLE', value: `${config.mass_kg} kg`, icon: '⚖️' },
               { label: 'GÖREV', value: config.mission, icon: '🎯' },
+              { label: 'GÜÇ', value: config.power_kw ? `${config.power_kw} kW` : 'Bilinmiyor', icon: '⚡' },
+              { label: 'İTKİ', value: config.propulsion || 'Hidrazin', icon: '🚀' },
               { label: 'ÖMÜR', value: config.designLife, icon: '⏱️' },
             ].map((item, i) => (
               <div key={i} style={{ background: 'rgba(0,0,0,0.35)', borderRadius: 8, padding: '8px 10px', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -125,9 +127,17 @@ function DetailCard({ liveData, config, onClose, position }) {
             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
               KAPASİTE — PAYLOAD
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)' }}>Faydalı Yük</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#00fff0', fontFamily: "'Space Mono', monospace" }}>{config.payload}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>Faydalı Yük</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#00fff0', textAlign: 'right', maxWidth: '65%' }}>{config.payload}</span>
+              </div>
+              {config.coverage && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>Kapsama Alanı</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#ffcc00', textAlign: 'right', maxWidth: '65%' }}>{config.coverage}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -151,13 +161,15 @@ function DetailCard({ liveData, config, onClose, position }) {
             </div>
           )}
 
-          <div style={{ background: 'rgba(255,140,66,0.06)', borderRadius: 8, padding: 12, border: '1px solid rgba(255,140,66,0.15)' }}>
+          <div style={{ background: 'rgba(255,140,66,0.06)', borderRadius: 8, padding: 12, border: '1px solid rgba(255,140,66,0.15)', marginBottom: 14 }}>
             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
               ÜRETİM — PLATFORM
             </div>
             {[
               { label: 'Üretici', value: config.manufacturer },
+              { label: 'Platform', value: config.platform || 'Bilinmiyor' },
               { label: 'Fırlatma', value: `${config.launchVehicle} • ${config.launchDate}` },
+              { label: 'Fırlatma Üssü', value: config.launchLocation || 'Bilinmiyor' },
             ].map((item, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                 <span style={{ color: 'rgba(255,255,255,0.5)' }}>{item.label}</span>
@@ -165,6 +177,21 @@ function DetailCard({ liveData, config, onClose, position }) {
               </div>
             ))}
           </div>
+
+          {config.services && config.services.length > 0 && (
+            <div style={{ background: 'rgba(0,255,136,0.04)', borderRadius: 8, padding: 12, border: '1px solid rgba(0,255,136,0.12)' }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
+                HİZMETLER
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {config.services.map((srv, idx) => (
+                  <div key={idx} style={{ fontSize: 11, color: '#00ff88', fontWeight: 600 }}>
+                    ► {srv}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           
           <a
             href={`https://www.n2yo.com/?s=${config.noradId}`}
@@ -182,7 +209,7 @@ function DetailCard({ liveData, config, onClose, position }) {
 }
 
 
-export default function GenericSatelliteSystem({ config, visible = true }) {
+export default function GenericSatelliteSystem({ config, visible = true, alertLevel = null }) {
   const [isSelected, setIsSelected] = useState(false)
   const [liveData, setLiveData] = useState(null)
   const [isHovered, setIsHovered] = useState(false)
@@ -256,8 +283,8 @@ export default function GenericSatelliteSystem({ config, visible = true }) {
                r = 1.45 
             }
             
-            const latDeg = gd.latitude * (180 / Math.PI)
-            const lonDeg = gd.longitude * (180 / Math.PI)
+            const latDeg = degreesLat(gd.latitude)
+            const lonDeg = degreesLong(gd.longitude)
             currentOrbitPos.copy(latLonToVec3(latDeg, lonDeg, r))
          }
        } catch (err) {
@@ -367,15 +394,15 @@ export default function GenericSatelliteSystem({ config, visible = true }) {
         {isHovered && !isSelected && (
           <Html position={[0, 0.4, 0]} style={{ pointerEvents: 'none' }} center>
             <div style={{
-              background: 'rgba(5,8,22,0.92)', border: '1px solid rgba(0, 255, 240, 0.4)',
+              background: 'rgba(5,8,22,0.92)', border: `1px solid ${alertLevel === 'RED' ? 'rgba(255, 34, 34, 0.8)' : alertLevel === 'ORANGE' ? 'rgba(255, 140, 66, 0.8)' : 'rgba(0, 255, 240, 0.4)'}`,
               padding: '6px 12px', borderRadius: 6, whiteSpace: 'nowrap',
-              backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
+              backdropFilter: 'blur(8px)', boxShadow: alertLevel === 'RED' ? '0 4px 20px rgba(255, 34, 34, 0.4)' : alertLevel === 'ORANGE' ? '0 4px 20px rgba(255, 140, 66, 0.4)' : '0 4px 20px rgba(0,0,0,0.6)',
             }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: '#fff' }}>
-                {config.icon || '🛰️'} {config.name}
+              <div style={{ fontSize: 12, fontWeight: 800, color: alertLevel === 'RED' ? '#ff2222' : alertLevel === 'ORANGE' ? '#ff8c42' : '#fff' }}>
+                {alertLevel === 'RED' ? '⚠️ ' : ''}{config.icon || '🛰️'} {config.name}
               </div>
-              <div style={{ fontSize: 9, color: 'rgba(0,255,240,0.8)', fontFamily: "'Space Mono', monospace", marginTop: 2 }}>
-                {config.orbitType} • {config.noradId}
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.8)', fontFamily: "'Space Mono', monospace", marginTop: 2 }}>
+                {config.orbitType} • {alertLevel === 'RED' ? 'KRİTİK RİSK ETKİSİ' : alertLevel === 'ORANGE' ? 'RİSK UYARISI' : 'Normal Operasyon'}
               </div>
             </div>
           </Html>
